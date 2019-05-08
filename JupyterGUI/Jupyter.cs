@@ -20,7 +20,6 @@ namespace JupyterGUI
     {
         private Process ps;
         private Log frm_log;
-        private string LogText;
 
         public Jupyter()
         {
@@ -90,19 +89,22 @@ namespace JupyterGUI
         private void Jupyter_ResizeEnd(object sender, EventArgs e)
         {
             if (this.WindowState == FormWindowState.Minimized)
+            {
+                notify.Visible = true;
                 this.ShowInTaskbar = false;
-        }
-
-        private void notify_Click(object sender, EventArgs e)
-        {
-            this.ShowInTaskbar = true;
-            this.WindowState = FormWindowState.Normal;
+                notify.ShowBalloonTip(3, "Jupyter", "Jupytyer-notebook is running.", ToolTipIcon.Info);                
+            }
         }
 
         private void Jupyter_FormClosing(object sender, FormClosingEventArgs e)
         {
             if (ps != null)
-                ps.Close();
+                ps.Kill();
+            Properties.Settings.Default.dir = tb_dir.Text;
+            Properties.Settings.Default.ip = cb_ip.Text;
+            Properties.Settings.Default.port = tb_port.Text;
+            Properties.Settings.Default.no_browser = cb_browser.Checked;
+            notify.Visible = false;
             Properties.Settings.Default.Save();
         }
 
@@ -143,34 +145,46 @@ namespace JupyterGUI
                 MessageBox.Show("Can not find jupyter-notebook.exe", "File not found", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 Close();
             }
-            ps = new Process();
-            ps.StartInfo.FileName = jupyter_dir;
-            ps.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-            ps.StartInfo.Arguments = string.Format("notebook {0} --ip={1} --port={2} --notebook-dir={3}",
+            ProcessStartInfo ps_info = new ProcessStartInfo();
+            ps_info.FileName = jupyter_dir;
+            ps_info.WindowStyle = ProcessWindowStyle.Hidden;
+            ps_info.Arguments = string.Format("{0} --ip={1} --port={2} --notebook-dir={3}",
                cb_browser.Checked ? "--no-browser" : "",
                cb_ip.Text,
                tb_port.Text,
                tb_dir.Text);
+            ps_info.CreateNoWindow = true;
+            ps_info.UseShellExecute = false;
+            ps_info.RedirectStandardOutput = true;
+            ps_info.RedirectStandardError = true;
+            ps_info.RedirectStandardInput = true;
+            ps = Process.Start(ps_info);
             ps.Exited += Ps_Disposed;
+            ps.Disposed += Ps_Disposed;
             ps.OutputDataReceived += Ps_OutputDataReceived;
             ps.ErrorDataReceived += Ps_ErrorDataReceived;
-            ps.Start();
+            ps.BeginErrorReadLine();
+            ps.BeginOutputReadLine();
             btn_browse_folder.Enabled = false;
             tb_port.Enabled = false;
             cb_browser.Enabled = false;
             cb_ip.Enabled = false;
             btn_stop.Enabled = true;
             btn_start.Enabled = false;
+            startToolStripMenuItem.Enabled = false;
+            stopToolStripMenuItem.Enabled = true;
+            if (notify.Visible)
+                notify.ShowBalloonTip(5, "Jupyter", "Service started.", ToolTipIcon.Info);
         }
 
         private void Ps_ErrorDataReceived(object sender, DataReceivedEventArgs e)
         {
-            LogText = LogText + e.Data;
+            frm_log.LogText = e.Data + "\r\n";
         }
 
         private void Ps_OutputDataReceived(object sender, DataReceivedEventArgs e)
         {
-            LogText = LogText + e.Data;
+            frm_log.LogText = e.Data + "\r\n";
         }
 
         private void Ps_Disposed(object sender, EventArgs e)
@@ -181,6 +195,8 @@ namespace JupyterGUI
             cb_ip.Enabled = true;
             btn_start.Enabled = true;
             btn_stop.Enabled = false;
+            startToolStripMenuItem.Enabled = true;
+            stopToolStripMenuItem.Enabled = false;
         }
 
         private void cb_browser_CheckedChanged(object sender, EventArgs e)
@@ -192,15 +208,21 @@ namespace JupyterGUI
         private void btn_stop_Click(object sender, EventArgs e)
         {
             ps.Kill();
-            btn_start.Enabled = true;
-            btn_stop.Enabled = false;
+            Ps_Disposed(null, null);
+            if (notify.Visible)
+                notify.ShowBalloonTip(5, "Jupyter", "Service stoped.", ToolTipIcon.Info);
         }
 
         private void btn_log_Click(object sender, EventArgs e)
         {
-            frm_log.LogText = LogText;
-            LogText = "";
-            frm_log.ShowDialog();
+            frm_log.Show();
+        }
+
+        private void notify_MouseDoubleClick(object sender, MouseEventArgs e)
+        {
+            this.WindowState = FormWindowState.Normal;
+            notify.Visible = false;
+            this.ShowInTaskbar = true;
         }
     }
 }
